@@ -21,6 +21,16 @@
 - Maven 3.9 o superior
 - Docker Desktop con Compose v2
 
+## Pruebas automatizadas
+
+Ejecuta las pruebas unitarias y la verificación completa del proyecto:
+
+```bash
+mvn --batch-mode clean verify
+```
+
+Este mismo comando se ejecuta en el job `Ejecutar pruebas` de GitHub Actions.
+
 ## Ejecución local con Maven
 
 Primero inicia MongoDB:
@@ -112,7 +122,7 @@ docker push DOCKERHUB_USER/arrival-gateway:1.0
 
 ## Despliegue en AWS
 
-El despliegue se realiza automáticamente mediante GitHub Actions usando una sola instancia EC2 con Amazon Linux 2023. El workflow se encuentra en `.github/workflows/ci-cd.yml` y se ejecuta en cada `push` a `main`.
+El despliegue se realiza automáticamente mediante GitHub Actions usando una sola instancia EC2 con Amazon Linux 2023. El workflow se encuentra en `.github/workflows/ci-cd.yml` y se ejecuta cuando un `push` a `main` modifica código, dependencias, configuración Docker o el propio workflow. Los cambios exclusivos en `README.md` o `assets/**` no disparan el pipeline.
 
 El pipeline realiza estas etapas:
 
