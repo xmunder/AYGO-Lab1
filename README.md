@@ -112,69 +112,43 @@ docker push DOCKERHUB_USER/arrival-gateway:1.0
 
 ## Despliegue en AWS
 
-Utiliza dos instancias EC2 con Amazon Linux 2023:
+El despliegue se realiza automáticamente mediante GitHub Actions usando una sola instancia EC2 con Amazon Linux 2023. El workflow se encuentra en `.github/workflows/ci-cd.yml` y se ejecuta en cada `push` a `main`.
 
-1. Instancia del servicio: ejecuta `arrival-service` y MongoDB. Permite el puerto `8081` únicamente desde el grupo de seguridad del gateway.
-2. Instancia del gateway: ejecuta `arrival-gateway`. Permite el puerto `8080` desde la red de clientes y el puerto SSH `22` únicamente desde tu IP.
+El pipeline realiza estas etapas:
 
-Instala Docker en cada instancia:
+1. Ejecuta las pruebas Maven.
+2. Ejecuta el análisis de SonarQube y valida el Quality Gate.
+3. Construye y publica `arrival-service` y `arrival-gateway` en Docker Hub usando el SHA del commit.
+4. Se conecta por SSH a la instancia EC2.
+5. Verifica que Docker exista; si no existe, lo instala, inicia el servicio y agrega `ec2-user` al grupo de Docker.
+6. Crea la red Docker, inicia MongoDB y actualiza los contenedores del servicio y del gateway.
 
-```bash
-sudo yum update -y
-sudo yum install -y docker
-sudo service docker start
-sudo usermod -a -G docker ec2-user
-```
+Configura estas variables en **Settings > Secrets and variables > Actions > Variables**:
 
-Inicia sesión nuevamente después de agregar el usuario al grupo de Docker.
+| Variable | Descripción |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Usuario de Docker Hub |
+| `AWS_EC2_HOST` | DNS público de la instancia EC2 |
+| `AWS_SSH_USER` | Usuario SSH, normalmente `ec2-user` |
+| `ARRIVAL_SERVICE_URL` | URL interna del servicio, normalmente `http://arrival-service:8081` |
 
-En la instancia del servicio:
+Configura estos secrets en la misma sección:
 
-```bash
-docker network create arrival-network
-docker pull DOCKERHUB_USER/arrival-service:1.0
-docker run -d \
-  --name arrival-db \
-  --restart unless-stopped \
-  --network arrival-network \
-  -v arrival-mongodb:/data/db \
-  -v arrival-mongodb-config:/data/configdb \
-  mongo:8
+| Secret | Descripción |
+| --- | --- |
+| `DOCKERHUB_TOKEN` | Token de acceso de Docker Hub |
+| `SONAR_TOKEN` | Token de SonarQube |
+| `AWS_EC2_SSH_KEY` | Llave privada SSH de la instancia EC2 |
 
-docker run -d \
-  --name arrival-service \
-  --restart unless-stopped \
-  --network arrival-network \
-  -e PORT=8081 \
-  -e MONGODB_URI=mongodb://arrival-db:27017/arrival_workshop \
-  -p 8081:8081 \
-  DOCKERHUB_USER/arrival-service:1.0
-```
+La instancia EC2 debe permitir el puerto `8080` desde la red de clientes y el puerto SSH `22` desde el runner de GitHub Actions. MongoDB y `arrival-service` permanecen dentro de la red Docker y no necesitan publicar sus puertos en Internet.
 
-MongoDB y el servicio se comunican mediante la red privada de Docker usando el nombre `arrival-db`; MongoDB no necesita publicar un puerto en el host.
-
-Para un despliegue más seguro, mantén MongoDB y el servicio en una red privada de Docker y expón únicamente el puerto del servicio al gateway. La dirección privada indicada debe ser accesible desde el contenedor del gateway y debe reemplazarse por la dirección real de la red.
-
-En la instancia del gateway:
-
-```bash
-docker pull DOCKERHUB_USER/arrival-gateway:1.0
-docker run -d \
-  --name arrival-gateway \
-  --restart unless-stopped \
-  -e PORT=8080 \
-  -e ARRIVAL_SERVICE_URL=http://ARRIVAL_SERVICE_PRIVATE_IP:8081 \
-  -p 8080:8080 \
-  DOCKERHUB_USER/arrival-gateway:1.0
-```
-
-Verifica desde un navegador:
+Después de un despliegue exitoso, verifica la aplicación desde un navegador usando HTTP:
 
 ```text
 http://GATEWAY_PUBLIC_DNS:8080
 ```
 
-Verifica desde la instancia del gateway:
+También puedes verificar la API desde la instancia EC2:
 
 ```bash
 curl http://localhost:8080/api/arrivals
