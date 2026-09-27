@@ -1,0 +1,35 @@
+services:
+  gateway:
+    build:
+      context: ./api-gateway
+    container_name: arrival-gateway
+    environment:
+      PORT: 8080
+      ARRIVAL_SERVICE_URL: http://arrival-service:8081
+    ports:
+      - "8080:8080"
+    depends_on:
+      - arrival-service
+
+  arrival-service:
+    build:
+      context: ./arrival-service
+    container_name: arrival-service
+    environment:
+      PORT: 8081
+      MONGODB_URI: mongodb://db:27017/arrival_workshop
+    expose:
+      - "8081"
+    depends_on:
+      - db
+
+  db:
+    image: mongo:8
+    container_name: arrival-db
+    volumes:
+      - mongodb:/data/db
+      - mongodb_config:/data/configdb
+
+volumes:
+  mongodb:
+  mongodb_config:
