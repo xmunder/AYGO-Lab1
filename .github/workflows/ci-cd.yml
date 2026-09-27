@@ -1,0 +1,190 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '21'
+  DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+  SERVICE_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/arrival-service
+  GATEWAY_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/arrival-gateway
+  ARRIVAL_SERVICE_URL: ${{ vars.ARRIVAL_SERVICE_URL }}
+
+jobs:
+  tests:
+    name: Ejecutar pruebas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v5
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Ejecutar pruebas
+        run: mvn --batch-mode clean verify
+
+  sonar:
+    name: Validar SonarQube
+    needs: tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v5
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Ejecutar análisis y Quality Gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >-
+          mvn --batch-mode clean verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar
+          -Dsonar.token="$SONAR_TOKEN"
+          -Dsonar.qualitygate.wait=true
+
+  publicar-imagenes:
+    name: Publicar imágenes Docker
+    needs: sonar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v5
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Empaquetar aplicaciones
+        run: mvn --batch-mode package -DskipTests
+
+      - name: Iniciar sesión en Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construir y publicar arrival-service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./arrival-service
+          push: true
+          tags: |
+            ${{ env.SERVICE_IMAGE }}:${{ github.sha }}
+            ${{ env.SERVICE_IMAGE }}:latest
+
+      - name: Construir y publicar api-gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api-gateway
+          push: true
+          tags: |
+            ${{ env.GATEWAY_IMAGE }}:${{ github.sha }}
+            ${{ env.GATEWAY_IMAGE }}:latest
+
+  desplegar:
+    name: Desplegar en EC2
+    needs: publicar-imagenes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configurar agente SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.AWS_EC2_SSH_KEY }}
+
+      - name: Registrar host SSH
+        env:
+          EC2_HOST: ${{ vars.AWS_EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Actualizar contenedores en EC2
+        env:
+          EC2_HOST: ${{ vars.AWS_EC2_HOST }}
+          SSH_USER: ${{ vars.AWS_SSH_USER }}
+          IMAGE_TAG: ${{ github.sha }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          ARRIVAL_SERVICE_URL: ${{ vars.ARRIVAL_SERVICE_URL }}
+        run: |
+          ssh "$SSH_USER@$EC2_HOST" "bash -s -- '$IMAGE_TAG' '$DOCKERHUB_USERNAME' '$ARRIVAL_SERVICE_URL'" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          IMAGE_TAG="$1"
+          DOCKERHUB_USERNAME="$2"
+          ARRIVAL_SERVICE_URL="$3"
+          NETWORK="arrival-network"
+
+          docker network create "$NETWORK" 2>/dev/null || true
+
+          if docker ps -a --format '{{.Names}}' | grep -qx 'arrival-db'; then
+            docker start arrival-db 2>/dev/null || true
+            docker network connect "$NETWORK" arrival-db 2>/dev/null || true
+          else
+            docker run -d \
+              --name arrival-db \
+              --restart unless-stopped \
+              --network "$NETWORK" \
+              -v arrival-mongodb:/data/db \
+              -v arrival-mongodb-config:/data/configdb \
+              mongo:8
+          fi
+
+          docker pull "$DOCKERHUB_USERNAME/arrival-service:$IMAGE_TAG"
+          docker pull "$DOCKERHUB_USERNAME/arrival-gateway:$IMAGE_TAG"
+
+          docker rm -f arrival-service 2>/dev/null || true
+          docker run -d \
+            --name arrival-service \
+            --restart unless-stopped \
+            --network "$NETWORK" \
+            -e PORT=8081 \
+            -e MONGODB_URI=mongodb://arrival-db:27017/arrival_workshop \
+            "$DOCKERHUB_USERNAME/arrival-service:$IMAGE_TAG"
+
+          docker rm -f arrival-gateway 2>/dev/null || true
+          docker run -d \
+            --name arrival-gateway \
+            --restart unless-stopped \
+            --network "$NETWORK" \
+            -e PORT=8080 \
+            -e ARRIVAL_SERVICE_URL="$ARRIVAL_SERVICE_URL" \
+            -p 8080:8080 \
+            "$DOCKERHUB_USERNAME/arrival-gateway:$IMAGE_TAG"
+
+          docker ps
+          REMOTE_SCRIPT
