@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lista de llegadas</title>
+    <style>
+        body { font-family: sans-serif; max-width: 680px; margin: 3rem auto; padding: 0 1rem; }
+        form { display: flex; gap: .5rem; }
+        input, button { font: inherit; padding: .65rem; }
+        input { flex: 1; }
+        li { margin: .6rem 0; }
+        #status { min-height: 1.5rem; }
+    </style>
+</head>
+<body>
+    <h1>Lista de llegadas</h1>
+    <form id="arrival-form">
+        <label for="name">Nombre:</label>
+        <input id="name" name="name" placeholder="Tu nombre" required>
+        <button type="submit">Registrar llegada</button>
+    </form>
+    <p id="status"></p>
+    <ul id="arrivals"></ul>
+
+    <script type="module">
+        const form = document.querySelector('#arrival-form');
+        const nameInput = document.querySelector('#name');
+        const status = document.querySelector('#status');
+        const arrivals = document.querySelector('#arrivals');
+
+        async function loadArrivals() {
+            const response = await fetch('/api/arrivals');
+            const records = await response.json();
+            arrivals.replaceChildren(...records.map(record => {
+                const item = document.createElement('li');
+                item.textContent = `${record.name} - ${new Date(record.timestamp).toLocaleString()}`;
+                return item;
+            }));
+        }
+
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            status.textContent = 'Guardando...';
+            const response = await fetch('/api/arrivals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: nameInput.value })
+            });
+            if (!response.ok) {
+                status.textContent = 'No se pudo guardar el nombre.';
+                return;
+            }
+            nameInput.value = '';
+            status.textContent = 'Llegada registrada.';
+            await loadArrivals();
+        });
+
+        try {
+            await loadArrivals();
+        } catch {
+            status.textContent = 'El backend no está disponible.';
+        }
+    </script>
+</body>
+</html>
