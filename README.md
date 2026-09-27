@@ -153,11 +153,3 @@ También puedes verificar la API desde la instancia EC2:
 ```bash
 curl http://localhost:8080/api/arrivals
 ```
-
-Termina ambas instancias EC2 después de la demostración para evitar cargos inesperados.
-
-## Evidencia en video
-
-Muestra la arquitectura, el registro desde el frontend, la lista de llegadas, `docker compose ps`, los documentos de MongoDB, las etiquetas de Docker Hub y la solicitud final del navegador a través del DNS público de la instancia EC2 del gateway.
-
-No grabes contraseñas, claves de acceso, llaves privadas ni tokens.

@@ -4,9 +4,29 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/**'
+      - '.mvn/**'
+      - '**/src/**'
+      - '**/pom.xml'
+      - 'pom.xml'
+      - '**/Dockerfile'
+      - 'docker-compose.yml'
+      - 'mvnw'
+      - 'mvnw.cmd'
   pull_request:
     branches:
       - main
+    paths:
+      - '.github/workflows/**'
+      - '.mvn/**'
+      - '**/src/**'
+      - '**/pom.xml'
+      - 'pom.xml'
+      - '**/Dockerfile'
+      - 'docker-compose.yml'
+      - 'mvnw'
+      - 'mvnw.cmd'
 
 permissions:
   contents: read
