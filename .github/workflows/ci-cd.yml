@@ -149,13 +149,21 @@ jobs:
           ARRIVAL_SERVICE_URL="$3"
           NETWORK="arrival-network"
 
-          docker network create "$NETWORK" 2>/dev/null || true
+          if ! command -v docker >/dev/null 2>&1; then
+            sudo yum update -y
+            sudo yum install -y docker
+          fi
 
-          if docker ps -a --format '{{.Names}}' | grep -qx 'arrival-db'; then
-            docker start arrival-db 2>/dev/null || true
-            docker network connect "$NETWORK" arrival-db 2>/dev/null || true
+          sudo service docker start
+          sudo usermod -a -G docker ec2-user
+
+          sudo docker network create "$NETWORK" 2>/dev/null || true
+
+          if sudo docker ps -a --format '{{.Names}}' | grep -qx 'arrival-db'; then
+            sudo docker start arrival-db 2>/dev/null || true
+            sudo docker network connect "$NETWORK" arrival-db 2>/dev/null || true
           else
-            docker run -d \
+            sudo docker run -d \
               --name arrival-db \
               --restart unless-stopped \
               --network "$NETWORK" \
@@ -164,11 +172,11 @@ jobs:
               mongo:8
           fi
 
-          docker pull "$DOCKERHUB_USERNAME/arrival-service:$IMAGE_TAG"
-          docker pull "$DOCKERHUB_USERNAME/arrival-gateway:$IMAGE_TAG"
+          sudo docker pull "$DOCKERHUB_USERNAME/arrival-service:$IMAGE_TAG"
+          sudo docker pull "$DOCKERHUB_USERNAME/arrival-gateway:$IMAGE_TAG"
 
-          docker rm -f arrival-service 2>/dev/null || true
-          docker run -d \
+          sudo docker rm -f arrival-service 2>/dev/null || true
+          sudo docker run -d \
             --name arrival-service \
             --restart unless-stopped \
             --network "$NETWORK" \
@@ -176,8 +184,8 @@ jobs:
             -e MONGODB_URI=mongodb://arrival-db:27017/arrival_workshop \
             "$DOCKERHUB_USERNAME/arrival-service:$IMAGE_TAG"
 
-          docker rm -f arrival-gateway 2>/dev/null || true
-          docker run -d \
+          sudo docker rm -f arrival-gateway 2>/dev/null || true
+          sudo docker run -d \
             --name arrival-gateway \
             --restart unless-stopped \
             --network "$NETWORK" \
@@ -186,5 +194,5 @@ jobs:
             -p 8080:8080 \
             "$DOCKERHUB_USERNAME/arrival-gateway:$IMAGE_TAG"
 
-          docker ps
+          sudo docker ps
           REMOTE_SCRIPT
