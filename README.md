@@ -213,3 +213,21 @@ También puedes verificar la API desde la instancia EC2:
 ```bash
 curl http://localhost:8080/api/arrivals
 ```
+
+## Evidencias
+
+### GitHub Actions
+
+![Ejecución exitosa del pipeline de GitHub Actions](https://i.ibb.co/39gXDMRN/Captura-de-pantalla-2026-09-27-200147.png)
+
+### Docker Hub
+
+![Imágenes publicadas en Docker Hub](https://i.ibb.co/4wrqGdNG/Captura-de-pantalla-2026-09-27-200658.png)
+
+### Aplicación funcionando
+
+![Registro y consulta de llegadas en la aplicación](https://i.ibb.co/WNjHSdPL/Captura-de-pantalla-2026-09-27-201304.png)
+
+### Logs y contenedores en EC2
+
+![Logs y contenedores activos en EC2](https://i.ibb.co/nsfyhHZW/Captura-de-pantalla-2026-09-27-201417.png)
