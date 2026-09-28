@@ -9,11 +9,61 @@
 
 ## Arquitectura
 
-![Arquitectura](./assets/arrival-architecture.png)
+![Arquitectura](https://i.ibb.co/b5WxnFCP/arrival-architecture.png)
 
 - `api-gateway`: sirve el frontend y reenvía las solicitudes de llegadas.
 - `arrival-service`: valida, agrega la fecha y hora, guarda y consulta las llegadas.
 - `db`: ejecuta MongoDB con volúmenes persistentes de Docker.
+
+El navegador se comunica únicamente con `api-gateway` mediante el puerto `8080`. El gateway funciona como punto de entrada HTTP y reenvía las solicitudes a `arrival-service` mediante la red privada de Docker. El servicio contiene la lógica de negocio y utiliza MongoDB para persistir las llegadas; MongoDB no se expone directamente al navegador.
+
+### Flujo de registro (`POST`)
+
+Cuando el usuario envía un nombre, el navegador realiza un `POST` al gateway. El gateway reenvía el mismo cuerpo al servicio, que valida y limpia el nombre antes de guardarlo en MongoDB.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser as Navegador
+    participant Gateway as api-gateway:8080
+    participant Service as arrival-service:8081
+    participant Mongo as MongoDB
+
+    Browser->>Gateway: POST /api/arrivals {name}
+    Gateway->>Service: POST /api/arrivals {name}
+    Service->>Service: Trim y validar nombre
+    Service->>Mongo: Guardar llegada con timestamp
+    Mongo-->>Service: Llegada persistida
+    Service-->>Gateway: 201 Created + llegada
+    Gateway-->>Browser: 201 Created + llegada
+```
+
+### Flujo de consulta (`GET`)
+
+Cuando se carga o actualiza la página, el navegador solicita la lista de llegadas. El gateway reenvía la consulta al servicio, que obtiene los registros desde MongoDB y devuelve la respuesta JSON.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser as Navegador
+    participant Gateway as api-gateway:8080
+    participant Service as arrival-service:8081
+    participant Mongo as MongoDB
+
+    Browser->>Gateway: GET /api/arrivals
+    Gateway->>Service: GET /api/arrivals
+    Service->>Mongo: Consultar llegadas
+    Mongo-->>Service: Lista de llegadas
+    Service-->>Gateway: 200 OK + JSON
+    Gateway-->>Browser: 200 OK + JSON
+```
+
+La API pública expone estos endpoints:
+
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| `POST` | `/api/arrivals` | Registrar una llegada con `{ "name": "..." }` |
+| `GET` | `/api/arrivals` | Consultar todas las llegadas |
 
 ## Requisitos
 
